@@ -56,7 +56,7 @@ high.data.materials.append(mat)
 s = bpy.context.scene.aaf
 s.high_obj = high
 s.retopo_method = method
-s.target_faces = faces
+s.target_tris = faces
 s.resolution = res
 s.samples = 8
 s.bake_ao = True

@@ -89,25 +89,71 @@ def _clean_mesh(obj, weld_fraction, fill_sides):
             res = bmesh.ops.holes_fill(bm, edges=boundary, sides=fill_sides)
             if res.get("faces"):
                 bmesh.ops.triangulate(bm, faces=res["faces"])
+    bmesh.ops.dissolve_degenerate(bm, dist=max(dist, 1e-9), edges=bm.edges)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bm.to_mesh(obj.data)
     bm.free()
     obj.data.update()
 
 
-def _decimate(obj, target_faces):
-    n = len(obj.data.polygons)
-    if n <= target_faces:
+def count_tris(obj):
+    me = obj.data
+    me.calc_loop_triangles()
+    return len(me.loop_triangles)
+
+
+def _remove_small_islands(obj, min_fraction):
+    """Delete floating fragments (scan debris, AI floaters) smaller than min_fraction of the biggest piece."""
+    if min_fraction <= 0:
+        return 0
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.faces.ensure_lookup_table()
+    seen = set()
+    islands = []
+    for f in bm.faces:
+        if f.index in seen:
+            continue
+        stack, comp = [f], []
+        seen.add(f.index)
+        while stack:
+            cur = stack.pop()
+            comp.append(cur)
+            for e in cur.edges:
+                for nb in e.link_faces:
+                    if nb.index not in seen:
+                        seen.add(nb.index)
+                        stack.append(nb)
+        islands.append(comp)
+    removed = 0
+    if len(islands) > 1:
+        biggest = max(len(c) for c in islands)
+        kill = [f for c in islands if len(c) < biggest * min_fraction for f in c]
+        if kill:
+            removed = len(kill)
+            bmesh.ops.delete(bm, geom=kill, context="FACES")
+            loose = [v for v in bm.verts if not v.link_faces]
+            bmesh.ops.delete(bm, geom=loose, context="VERTS")
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+    return removed
+
+
+def _decimate_to_tris(obj, target_tris):
+    """Collapse-decimate to a triangle budget (output is triangles)."""
+    n = count_tris(obj)
+    if n <= target_tris:
         return
     select_only(obj)
     mod = obj.modifiers.new("AAF_decimate", "DECIMATE")
     mod.decimate_type = "COLLAPSE"
-    mod.ratio = max(min(target_faces / n, 1.0), 0.0001)
+    mod.ratio = max(min(target_tris / n, 1.0), 0.0001)
     mod.use_collapse_triangulate = True
     bpy.ops.object.modifier_apply(modifier=mod.name)
 
 
-def _quadriflow(obj, s):
+def _quadriflow(obj, s, quads):
     select_only(obj)
     try:
         res = bpy.ops.object.quadriflow_remesh(
@@ -116,7 +162,7 @@ def _quadriflow(obj, s):
             use_preserve_boundary=s.preserve_boundary,
             smooth_normals=True,
             mode="FACES",
-            target_faces=int(s.target_faces),
+            target_faces=int(max(quads, 50)),
             seed=0,
         )
     except RuntimeError as exc:
@@ -139,39 +185,113 @@ def _voxel_remesh(obj):
         return False
 
 
+def _quad_budget_pass(low, s, base_mesh, target_tris, cap_tris):
+    """Quadriflow aims at a quad count but can overshoot; retry lower until under the cap."""
+    quads = target_tris / 2.0
+    for attempt in range(1, 5):
+        low.data = base_mesh.copy()
+        if not _quadriflow(low, s, quads):
+            return False
+        tris = count_tris(low)
+        log(f"Quadriflow attempt {attempt}: asked {int(quads):,} quads -> {tris:,} tris")
+        if tris <= cap_tris:
+            return True
+        quads *= (target_tris / tris) * 0.93
+    return False
+
+
+def quality_report(low, high_eval_obj):
+    """Shape deviation of low vs high (closest-surface distance, as % of size) plus topology health."""
+    from mathutils.bvhtree import BVHTree
+
+    diag = world_diag(low)
+    deps = bpy.context.evaluated_depsgraph_get()
+    bvh = BVHTree.FromObject(high_eval_obj, deps)
+    mw = low.matrix_world
+    inv = high_eval_obj.matrix_world.inverted()
+    devs = []
+    for v in low.data.vertices:
+        hit = bvh.find_nearest(inv @ (mw @ v.co))
+        if hit and hit[0] is not None:
+            devs.append(((high_eval_obj.matrix_world @ hit[0]) - (mw @ v.co)).length)
+    devs.sort()
+    me = low.data
+    quads = sum(1 for p in me.polygons if len(p.vertices) == 4)
+    ngons = sum(1 for p in me.polygons if len(p.vertices) > 4)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    nonman = sum(1 for e in bm.edges if not e.is_manifold)
+    bm.free()
+    return {
+        "tris": count_tris(low),
+        "faces": len(me.polygons),
+        "quads": quads,
+        "ngons": ngons,
+        "non_manifold_edges": nonman,
+        "mean_dev_pct": (sum(devs) / len(devs) / diag * 100) if devs else 0.0,
+        "p99_dev_pct": (devs[int(len(devs) * 0.99)] / diag * 100) if devs else 0.0,
+        "max_dev_pct": (devs[-1] / diag * 100) if devs else 0.0,
+    }
+
+
 def retopologize(context, s):
     high = get_high(context, s)
+    cap = int(s.max_tris)
+    target = min(int(s.target_tris), cap)
     low = _duplicate_as_low(high)
     s.high_obj = high
     s.low_obj = low
     select_only(low)
 
     n0 = len(low.data.polygons)
-    log(f"Retopology: {high.name} has {n0:,} faces")
+    log(f"Retopology: {high.name} has {n0:,} faces; budget {target:,} tris (hard cap {cap:,})")
     _clean_mesh(low, s.weld_fraction, s.fill_holes_sides)
+
+    if n0 > PREDECIMATE_ABOVE:
+        log(f"Pre-decimating to {PREDECIMATE_TO:,} tris so the remesher stays fast")
+        _decimate_to_tris(low, PREDECIMATE_TO)
+        _clean_mesh(low, s.weld_fraction, s.fill_holes_sides)  # decimation can leave pinholes that break Quadriflow
+    removed = _remove_small_islands(low, s.drop_island_pct / 100.0)
+    if removed:
+        log(f"Removed {removed:,} faces of floating debris")
 
     method_used = s.retopo_method
     if s.retopo_method == "QUADRIFLOW":
-        if len(low.data.polygons) > PREDECIMATE_ABOVE:
-            log(f"Pre-decimating to {PREDECIMATE_TO:,} faces for a faster quad remesh")
-            _decimate(low, PREDECIMATE_TO)
-        ok = _quadriflow(low, s)
+        base = low.data.copy()
+        ok = _quad_budget_pass(low, s, base, target, cap)
         if not ok:
             log("Falling back: voxel remesh, then quad remesh again")
             method_used = "VOXEL+QUADRIFLOW"
+            low.data = base.copy()
             if _voxel_remesh(low):
-                ok = _quadriflow(low, s)
+                base2 = low.data.copy()
+                ok = _quad_budget_pass(low, s, base2, target, cap)
+                bpy.data.meshes.remove(base2)
         if not ok:
             log("Falling back: decimate")
             method_used = "DECIMATE (fallback)"
-            _decimate(low, int(s.target_faces))
+            low.data = base.copy()
+            _decimate_to_tris(low, target)
+        if base.users == 0:
+            bpy.data.meshes.remove(base)
     else:
-        _decimate(low, int(s.target_faces))
+        _decimate_to_tris(low, target)
+
+    # last line of defence: never exceed the cap
+    if count_tris(low) > cap:
+        log(f"Still over cap ({count_tris(low):,}); decimating to {target:,}")
+        _decimate_to_tris(low, target)
+        method_used += " + cap decimate"
 
     # AI meshes carry vertex data we are about to rebuild; keep only the shape.
     me = low.data
+    me.name = low.name
     while me.uv_layers:
         me.uv_layers.remove(me.uv_layers[0])
+    if s.triangulate:
+        select_only(low)
+        mod = low.modifiers.new("AAF_tri", "TRIANGULATE")
+        bpy.ops.object.modifier_apply(modifier=mod.name)
     select_only(low)
     bpy.ops.object.shade_smooth()
     try:
@@ -179,9 +299,15 @@ def retopologize(context, s):
     except (RuntimeError, AttributeError):
         pass
 
-    n1 = len(low.data.polygons)
-    s.status = f"Retopology: {n0:,} -> {n1:,} faces ({method_used})"
+    rep = quality_report(low, high)
+    s.report = (
+        f"{rep['tris']:,} tris / {rep['faces']:,} faces ({rep['quads']:,} quads, {rep['ngons']} ngons); "
+        f"{rep['non_manifold_edges']} non-manifold edges; "
+        f"deviation mean {rep['mean_dev_pct']:.2f}% p99 {rep['p99_dev_pct']:.2f}% max {rep['max_dev_pct']:.2f}%"
+    )
+    s.status = f"Retopology: {n0:,} -> {rep['tris']:,} tris ({method_used})"
     log(s.status)
+    log(s.report)
     return low
 
 

@@ -20,6 +20,9 @@ class AAF_PT_main(_Panel, bpy.types.Panel):
         if s.status:
             box = self.layout.box()
             box.label(text=s.status, icon="INFO")
+            if s.report:
+                for part in s.report.split("; "):
+                    box.label(text=part)
 
 
 class AAF_PT_retopo(_Panel, bpy.types.Panel):
@@ -32,7 +35,9 @@ class AAF_PT_retopo(_Panel, bpy.types.Panel):
         s = context.scene.aaf
         col = self.layout.column()
         col.prop(s, "retopo_method")
-        col.prop(s, "target_faces")
+        col.prop(s, "target_tris")
+        col.prop(s, "max_tris")
+        col.prop(s, "drop_island_pct")
         if s.retopo_method == "QUADRIFLOW":
             col.prop(s, "preserve_sharp")
             col.prop(s, "preserve_boundary")

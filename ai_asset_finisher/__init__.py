@@ -1,7 +1,7 @@
 bl_info = {
     "name": "AI Asset Finisher",
     "author": "3D Labs",
-    "version": (0, 1, 0),
+    "version": (0, 2, 0),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > AI Asset",
     "description": "Turn AI generations and photoscans into game-ready assets: retopology, seams/UV, and high-to-low baking",

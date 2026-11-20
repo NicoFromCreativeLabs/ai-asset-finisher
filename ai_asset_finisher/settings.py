@@ -38,10 +38,20 @@ class AAFSettings(bpy.types.PropertyGroup):
         ],
         default="QUADRIFLOW",
     )
-    target_faces: IntProperty(
-        name="Target faces",
-        description="Approximate face count of the optimized mesh",
-        default=8000, min=100, max=500000,
+    target_tris: IntProperty(
+        name="Target triangles",
+        description="Triangle budget of the optimized mesh (a quad counts as 2). Quad remesh lands within roughly +-15%",
+        default=12000, min=200, max=500000,
+    )
+    max_tris: IntProperty(
+        name="Hard cap (tris)",
+        description="The result is never allowed to exceed this many triangles; the remesh is retried lower, then decimated",
+        default=15000, min=200, max=500000,
+    )
+    drop_island_pct: FloatProperty(
+        name="Drop debris below %",
+        description="Delete disconnected fragments smaller than this % of the largest piece (scan floaters, AI debris). 0 disables",
+        default=0.5, min=0.0, max=50.0,
     )
     preserve_sharp: BoolProperty(name="Preserve sharp edges", default=False)
     preserve_boundary: BoolProperty(name="Preserve boundaries", default=False)
@@ -130,6 +140,7 @@ class AAFSettings(bpy.types.PropertyGroup):
     )
     hide_high: BoolProperty(name="Hide high-poly when done", default=True)
     status: StringProperty(default="")
+    report: StringProperty(default="")
 
 
 classes = (AAFSettings,)
