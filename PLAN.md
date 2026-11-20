@@ -25,10 +25,11 @@ Each step is shippable and testable on its own. We only start the next one when 
 
 Settings: target triangles, hard cap, drop-debris %, preserve sharp edges, preserve boundaries, hole-fill size, weld distance, smooth angle, triangulate.
 
-Verified so far (headless, Blender 5.0): a 40K-face AI figurine becomes 12,096 tris, all quads, 0 non-manifold edges, mean deviation 0.01%, in 4.5 s.
-Not yet verified: your real photoscan; Blender 4.3 on a dense mesh; Blender 4.2.
+Verified so far (headless):
+- 40K-face AI figurine, Blender 5.0: 12,096 tris, all quads, 0 non-manifold edges, mean deviation 0.01%, 4 s.
+- Imitated noisy photoscans of 0.5M and 1.9M faces (debris + surface noise), Blender 5.0: 12.4K and 11.5K tris, all quads, 0 non-manifold edges, mean deviation 0.02%, 20 s and 76 s. Quadriflow rejects these directly, so the add-on rebuilds a watertight surface with a voxel remesh (coarse to fine) and quad-remeshes that.
 
-Known limitation: on a 7.7M-face noisy test mesh the first version fell back to plain decimation (triangles, non-manifold edges) because Quadriflow rejected the pre-decimated mesh. I added a second clean pass after pre-decimation; the retest is pending.
+Not yet verified: your real photoscan, and Blender 4.2.
 
 ## Install
 

@@ -174,9 +174,9 @@ def _quadriflow(obj, s, quads):
     return ok
 
 
-def _voxel_remesh(obj):
+def _voxel_remesh(obj, divisions):
     select_only(obj)
-    obj.data.remesh_voxel_size = world_diag(obj) / 250.0
+    obj.data.remesh_voxel_size = world_diag(obj) / divisions
     try:
         bpy.ops.object.voxel_remesh()
         return len(obj.data.polygons) > 0
@@ -260,13 +260,17 @@ def retopologize(context, s):
         base = low.data.copy()
         ok = _quad_budget_pass(low, s, base, target, cap)
         if not ok:
-            log("Falling back: voxel remesh, then quad remesh again")
+            log("Falling back: voxel remesh (rebuilds a watertight surface), then quad remesh again")
             method_used = "VOXEL+QUADRIFLOW"
-            low.data = base.copy()
-            if _voxel_remesh(low):
-                base2 = low.data.copy()
-                ok = _quad_budget_pass(low, s, base2, target, cap)
-                bpy.data.meshes.remove(base2)
+            # Noisy scans give Quadriflow trouble at fine voxel sizes, so go from coarse to fine.
+            for div in (120, 80, 200):
+                low.data = base.copy()
+                if _voxel_remesh(low, div):
+                    base2 = low.data.copy()
+                    ok = _quad_budget_pass(low, s, base2, target, cap)
+                    bpy.data.meshes.remove(base2)
+                    if ok:
+                        break
         if not ok:
             log("Falling back: decimate")
             method_used = "DECIMATE (fallback)"
