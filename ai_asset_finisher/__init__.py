@@ -1,10 +1,12 @@
 bl_info = {
     "name": "AI Asset Finisher",
-    "author": "3D Labs",
-    "version": (0, 2, 0),
+    "author": "CreativeLabsGTO",
+    "version": (0, 3, 0),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > AI Asset",
-    "description": "Turn AI generations and photoscans into game-ready assets: retopology, seams/UV, and high-to-low baking",
+    "description": "Clean quad retopology under a polygon budget for AI generations and photoscans, plus UVs, baking and export",
+    "doc_url": "https://github.com/NicoFromCreativeLabs/ai-asset-finisher",
+    "tracker_url": "https://github.com/NicoFromCreativeLabs/ai-asset-finisher/issues",
     "category": "Object",
 }
 

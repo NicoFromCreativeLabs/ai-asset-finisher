@@ -11,7 +11,7 @@ Each step is shippable and testable on its own. We only start the next one when 
 | 2. Seams and UVs | Seam placement (angle islands + hard edges + boundary), unwrap, uniform texel density, packing | UVs in 0-1, no overlaps, coverage > 70%, stretch under a threshold, seams hidden on the sole, tongue and inner edges | Prototype exists (smart project + island seams), not tuned |
 | 3. Bake | Normal, base colour, roughness, metallic, AO from high to low into the new UVs; cage and ray distance; edge padding | Re-lit low-poly matches the high-poly, no seam artefacts, no black or blown-out patches | Prototype exists, verified on a figurine only |
 | 4. Material and export | Clean PBR material, OpenGL/DirectX normals, PNG maps, GLB/FBX export with textures | Opens correctly in Unity, Unreal and glTF viewers | Prototype exists, export untested |
-| 5. Polish | Presets (Footwear, Apparel), batch mode over folders, progress UI, optional edge-flow guidance (hard-surface parts like soles and eyelets), symmetry | Batch of the team's ~400 models runs unattended | Not started |
+| 5. Polish | Presets (Footwear, Apparel), batch mode over folders, progress UI, optional edge-flow guidance (hard-surface parts like soles and eyelets), symmetry | A folder of hundreds of models runs unattended | Not started |
 
 ## Step 1 detail (what is in v0.2.0)
 
