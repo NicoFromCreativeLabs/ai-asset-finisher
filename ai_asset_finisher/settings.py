@@ -82,6 +82,16 @@ class AAFSettings(bpy.types.PropertyGroup):
         description="Smaller angle = more seams and islands, less distortion",
         subtype="ANGLE", default=math.radians(66), min=math.radians(1), max=math.radians(89),
     )
+    uv_max_islands: IntProperty(
+        name="Max islands",
+        description="Merge small UV islands into neighbours until at most this many remain (fewer seams, easier texture painting)",
+        default=16, min=1, max=500,
+    )
+    uv_merge_cone: FloatProperty(
+        name="Max chart curvature",
+        description="A merged island may not curve around more than this angle (keeps stretching low)",
+        subtype="ANGLE", default=math.radians(100), min=math.radians(30), max=math.radians(170),
+    )
     unwrap_method: EnumProperty(
         name="Unwrap",
         items=[

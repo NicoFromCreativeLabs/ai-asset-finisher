@@ -179,10 +179,18 @@ def _voxel_remesh(obj, divisions):
     obj.data.remesh_voxel_size = world_diag(obj) / divisions
     try:
         bpy.ops.object.voxel_remesh()
-        return len(obj.data.polygons) > 0
     except RuntimeError as exc:
         log(f"Voxel remesh raised: {exc}")
         return False
+    if len(obj.data.polygons) == 0:
+        return False
+    # Voxel output is stair-stepped, and Quadriflow rejects it at fine resolutions even though it is
+    # manifold. A light smooth removes the staircase and makes Quadriflow accept it (the bake restores detail).
+    mod = obj.modifiers.new("AAF_smooth", "SMOOTH")
+    mod.factor = 0.5
+    mod.iterations = 5
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+    return True
 
 
 def _quad_budget_pass(low, s, base_mesh, target_tris, cap_tris):
@@ -263,7 +271,7 @@ def retopologize(context, s):
             log("Falling back: voxel remesh (rebuilds a watertight surface), then quad remesh again")
             method_used = "VOXEL+QUADRIFLOW"
             # Noisy scans give Quadriflow trouble at fine voxel sizes, so go from coarse to fine.
-            for div in (120, 80, 200):
+            for div in (120, 80, 200, 60):
                 low.data = base.copy()
                 if _voxel_remesh(low, div):
                     base2 = low.data.copy()
@@ -316,6 +324,102 @@ def retopologize(context, s):
 
 
 # --------------------------------------------------------------------------- 2. seams + UV
+
+def _merge_small_uv_islands(obj, max_islands, cone_deg, min_area_frac=0.012):
+    """Cut down the island count: merge the smallest charts into the neighbour they share the longest border
+    with, as long as the merged chart is still a topological disk (Euler characteristic 1) and does not curve
+    around more than `cone_deg` (so the unwrap stays low-distortion). Works on the seam flags of obj."""
+    import math
+    import bmesh
+
+    me = obj.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.faces.ensure_lookup_table()
+    bm.edges.ensure_lookup_table()
+
+    def charts():
+        cid = {}
+        n = 0
+        for f in bm.faces:
+            if f.index in cid:
+                continue
+            stack = [f]
+            cid[f.index] = n
+            while stack:
+                x = stack.pop()
+                for e in x.edges:
+                    if e.seam:
+                        continue
+                    for g in e.link_faces:
+                        if g.index not in cid:
+                            cid[g.index] = n
+                            stack.append(g)
+            n += 1
+        return cid, n
+
+    cid, n = charts()
+    if n <= 1:
+        bm.free()
+        return n, n
+    start = n
+    total_area = sum(f.calc_area() for f in bm.faces) or 1.0
+    groups = {}
+    for f in bm.faces:
+        groups.setdefault(cid[f.index], set()).add(f.index)
+    area = {c: sum(bm.faces[i].calc_area() for i in fs) for c, fs in groups.items()}
+    stuck = set()
+
+    def is_disk(face_ids):
+        verts, edges = set(), set()
+        for i in face_ids:
+            f = bm.faces[i]
+            verts.update(v.index for v in f.verts)
+            edges.update(e.index for e in f.edges)
+        return len(verts) - len(edges) + len(face_ids) == 1
+
+    def cone_ok(face_ids):
+        nrm = sum((bm.faces[i].normal * bm.faces[i].calc_area() for i in face_ids), type(bm.faces[0].normal)())
+        if nrm.length < 1e-9:
+            return False
+        nrm.normalize()
+        lim = math.cos(math.radians(cone_deg))
+        return all(bm.faces[i].normal.dot(nrm) >= lim for i in face_ids if bm.faces[i].calc_area() > 1e-12)
+
+    while True:
+        live = [c for c in groups if c not in stuck]
+        count = len(groups)
+        small = [c for c in live if count > max_islands or area[c] < min_area_frac * total_area]
+        if not small:
+            break
+        c = min(small, key=lambda k: area[k])
+        shared = {}
+        for i in groups[c]:
+            for e in bm.faces[i].edges:
+                if e.seam and len(e.link_faces) == 2:
+                    other = [g for g in e.link_faces if cid[g.index] != c]
+                    if other:
+                        shared.setdefault(cid[other[0].index], []).append(e)
+        merged = False
+        for nb in sorted(shared, key=lambda k: -sum(e.calc_length() for e in shared[k])):
+            union = groups[c] | groups[nb]
+            if is_disk(union) and cone_ok(union):
+                for e in shared[nb]:
+                    e.seam = False
+                for i in groups[c]:
+                    cid[i] = nb
+                groups[nb] = union
+                area[nb] += area[c]
+                del groups[c], area[c]
+                merged = True
+                break
+        if not merged:
+            stuck.add(c)
+    for e in bm.edges:
+        me.edges[e.index].use_seam = e.seam
+    bm.free()
+    return start, len(groups)
+
 def build_uvs(context, s):
     low = get_low(s)
     select_only(low)
@@ -349,6 +453,13 @@ def build_uvs(context, s):
         )
         # 2. ... we turn those island borders into real seams ...
         bpy.ops.uv.seams_from_islands(mark_seams=True, mark_sharp=False)
+        # 2b. ... then merge the many tiny islands smart-project produces into their neighbours.
+        bpy.ops.object.mode_set(mode="OBJECT")
+        before, after = _merge_small_uv_islands(low, int(s.uv_max_islands), math.degrees(s.uv_merge_cone))
+        log(f"UV islands merged: {before} -> {after}")
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_mode(type="FACE")
+        bpy.ops.mesh.select_all(action="SELECT")
         # 3. ... and unwrap properly across them. Smart-project islands are flat
         # projections and stretch on curved surfaces; a real unwrap does not.
         bpy.ops.uv.select_all(action="SELECT")
