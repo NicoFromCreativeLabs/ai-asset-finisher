@@ -13,6 +13,26 @@ AI generators (Hunyuan3D, Meshy, TRELLIS, Tripo…) and photoscans give you dens
 
 The original mesh is never touched: the result is a new `<name>_low` object.
 
+## See it
+
+AI-generated sneaker and chair, before (dense triangles) and after (clean quads). In each picture the top object is the new low-poly, the bottom one is the original.
+
+![Wireframe: the new quad mesh above the original triangle mesh, sneaker and chair](docs/retopo-wireframe-sneaker-chair.png)
+
+The same objects with the baked textures: the look of the original is kept at a fraction of the polygons.
+
+![Textured result: sneaker and chair, low-poly above and original below](docs/retopo-textured-sneaker-chair.png)
+
+| Wireframe | Textured |
+| --- | --- |
+| ![Sneaker wireframe, quad retopology above and original mesh below](docs/sneaker-wireframe-before-after.png) | ![Sneaker with baked textures, low-poly above and original below](docs/sneaker-textured-before-after.png) |
+
+The panel runs the whole pipeline with one button and reports triangles, quads, n-gons, non-manifold edges and the deviation from the original:
+
+![The AI Asset Finisher panel in Blender, with the quality report after a run](docs/panel-full-pipeline.png)
+
+![Quality report: 10,904 tris, 5,452 quads, 0 n-gons, deviation mean 0.02%](docs/panel-quality-report.png)
+
 ## Results
 
 Measured with the headless pipeline (Blender 5.0 and 4.3):
