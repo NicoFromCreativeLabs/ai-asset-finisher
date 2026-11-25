@@ -51,6 +51,44 @@ Limits: it targets organic and product shapes; hard-surface parts with very shar
 2. Blender: **Edit > Preferences > Add-ons > ⌄ > Install from Disk**, pick the zip, enable it.
 3. In the 3D viewport press **N**, open the **AI Asset** tab, pick the high-poly object, open **1. Retopology** and click **Retopologize**.
 
+## Tutorial: from a messy AI mesh to a game-ready asset
+
+About two minutes of work, most of it waiting for Blender.
+
+**1. Import your model.** `File > Import > glTF 2.0 (.glb)` (or OBJ/FBX). Blender 4.3 or newer; the add-on works on a mesh with or without colours or textures.
+
+**2. Open the panel.** In the 3D viewport press **N** and click the **AI Asset** tab. Click the **High-poly** field and pick your imported object. Leave **Low-poly** empty: the add-on creates it for you as `<name>_low`, and never touches the original.
+
+![The AI Asset Finisher panel: high-poly and low-poly fields, the Run Full Pipeline button, and the quality report after a run](docs/panel-full-pipeline.png)
+
+**3. Click Run Full Pipeline.** It runs the three steps below in order and shows the progress in the panel header. You can also run them one by one with the buttons inside each section.
+
+| Step | What it does | Settings you will actually touch |
+| --- | --- | --- |
+| **1. Retopology** | Cleans the mesh, drops floating debris, rebuilds it as quads with Quadriflow | **Target triangles** (12,000 default) and **Hard cap** (15,000). Lower them for mobile or web, raise them for hero assets. Tick *Preserve sharp edges* for hard-surface parts |
+| **2. Seams & UV** | Cuts seams on sharp angles, merges the tiny slivers, unwraps and packs | **Island angle** (larger angle means fewer, bigger islands) and **Island margin** |
+| **3. Bake** | Bakes normal, base colour, roughness, metallic and AO from the original into the new UVs | **Texture size** (1K to 8K, 2K default) and **Samples** |
+
+**4. Read the quality report.** When it finishes, the panel tells you what you got. You want **0 n-gons**, **0 non-manifold edges** and a small **deviation** (anything under about 0.1% means the shape is faithful to the original).
+
+![Quality report: 10,904 tris, 5,452 quads, 0 n-gons, deviation mean 0.02%](docs/panel-quality-report.png)
+
+**5. Check the result.** The new `<name>_low` object appears next to the original (which Run Full Pipeline hides when done, unless you untick *Hide high-poly when done* in **Output**). Switch to Wireframe (**Z**) to see the clean quad flow, and to Material Preview to see the baked textures.
+
+| Wireframe: clean quads | Material Preview: baked textures |
+| --- | --- |
+| ![Sneaker wireframe, quad retopology above and original mesh below](docs/sneaker-wireframe-before-after.png) | ![Sneaker with baked textures, low-poly above and original below](docs/sneaker-textured-before-after.png) |
+
+**6. Export.** In **Output** choose a folder (or save the .blend, and it exports next to it) and a format: **GLB**, **FBX** or both. If a format is chosen before you click Run Full Pipeline, the export happens automatically; otherwise click **Export** afterwards. You get the model with a clean PBR material plus the PNG maps, ready for Unity, Unreal, Godot or the web.
+
+**If something goes wrong**
+- *Quadriflow fails or gives triangles:* the add-on already rebuilds a watertight surface and retries on its own. If the result is still not what you want, raise **Fill holes up to** or lower the target triangles.
+- *Thin parts (chair legs, straps) look rough:* raise **Target triangles**, or tick *Preserve boundaries*.
+- *Too many UV islands, or visible seams:* raise **Island angle**. The merge step already caps the count (16 by default; the CLI and Python API expose it as `uv_max_islands`).
+- *Bake looks dirty:* raise the **Texture size** and **Samples**, then run step 3 again.
+
+Prefer no clicking? See *Headless / batch* below.
+
 ## Headless / batch
 
 ```bash
@@ -61,7 +99,7 @@ Arguments: input mesh (GLB/GLTF/OBJ), output folder, target triangles, hard cap,
 
 ## Settings worth knowing
 
-Target triangles, hard cap, drop-debris %, preserve sharp edges / boundaries, hole-fill size, weld distance, smooth angle, triangulate, UV island angle, **max islands**, bake resolution and samples.
+Target triangles, hard cap, drop-debris %, preserve sharp edges / boundaries, hole-fill size, weld distance, smooth angle, triangulate, UV island angle, UV island margin, bake texture size and samples. (The island cap, `uv_max_islands`, is set from Python or the CLI.)
 
 ## Build the zip yourself
 
