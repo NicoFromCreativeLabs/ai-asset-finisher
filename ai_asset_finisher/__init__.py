@@ -1,7 +1,7 @@
 bl_info = {
     "name": "AI Asset Finisher",
     "author": "CreativeLabsGTO",
-    "version": (0, 3, 0),
+    "version": (0, 3, 1),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > AI Asset",
     "description": "Clean quad retopology under a polygon budget for AI generations and photoscans, plus UVs, baking and export",

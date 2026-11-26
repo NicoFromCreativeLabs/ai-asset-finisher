@@ -6,7 +6,7 @@ AI generators (Hunyuan3D, Meshy, TRELLIS, Tripo…) and photoscans give you dens
 
 ## What it does
 
-1. **Clean retopology** (the headline). Cleans the mesh, removes floating debris, then remeshes with Quadriflow to a triangle budget (default 12K, hard cap 15K). If Quadriflow refuses the mesh, it rebuilds a watertight surface and tries again, and only falls back to plain decimation as a last resort. A quality report tells you triangles, quads, n-gons, non-manifold edges and the shape deviation from the original.
+1. **Clean retopology** (the headline). Cleans the mesh, removes floating debris, then remeshes with Quadriflow to a triangle budget (default 12K, hard cap 15K). If Quadriflow refuses the mesh, it rebuilds a watertight surface and tries again, and only falls back to plain decimation as a last resort. A quality report tells you triangles, quads, n-gons, non-manifold edges, the shape deviation from the original and how much of the original's detail was lost.
 2. **Seams and UVs.** Angle-based seams, then merges the tiny slivers into their neighbours (a typical result is 15 to 20 islands instead of 50 to 120), with uniform texel density and packing.
 3. **Bake.** Normal, base colour, roughness, metallic and AO from the high-poly into the new UVs (Cycles, GPU if available).
 4. **Export.** GLB and FBX with a clean PBR material, plus the PNG maps.
@@ -95,7 +95,7 @@ Prefer no clicking? See *Headless / batch* below.
 blender -b --factory-startup --python cli/optimize_asset.py -- in.glb out_dir 12000 15000 2048
 ```
 
-Arguments: input mesh (GLB/GLTF/OBJ), output folder, target triangles, hard cap, texture size. It prints `[STAGE] name fraction` lines and a final `[RESULT] {json}` line, which is how our own Creativelabs 3D desktop app drives it.
+Arguments: input mesh (GLB/GLTF/OBJ), output folder, target triangles, hard cap, texture size. It prints `[STAGE] name fraction` lines and a final `[RESULT] {json}` line, which is how our own [CreativelabsStudio](https://github.com/NicoFromCreativeLabs/CreativelabsStudio) desktop app drives it. The CLI runs two remeshes (free flow and sharp-edge, the second in a separate Blender process with a time limit) and keeps the one that loses less detail.
 
 ## Settings worth knowing
 
@@ -108,6 +108,10 @@ python build_zip.py   # -> dist/ai_asset_finisher.zip
 ```
 
 `dev/` holds the headless test scripts (`test_retopo.py`, `test_pipeline.py`, `test_install.py`). `PLAN.md` is the roadmap.
+
+## Generate the assets too: CreativelabsStudio
+
+AI Asset Finisher is the optimization half of [**CreativelabsStudio**](https://github.com/NicoFromCreativeLabs/CreativelabsStudio), our free desktop app that turns a product photo or a prompt into a textured 3D asset on your own NVIDIA GPU (8 GB is enough), then runs this same pipeline on it and hands you a GLB + FBX package. Nothing is uploaded and there are no credits.
 
 ## License
 
