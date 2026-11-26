@@ -223,6 +223,20 @@ def quality_report(low, high_eval_obj):
         if hit and hit[0] is not None:
             devs.append(((high_eval_obj.matrix_world @ hit[0]) - (mw @ v.co)).length)
     devs.sort()
+    # The other direction (original -> new) catches detail the new mesh fills in or rounds off
+    # (grilles, slots, thin fins), which the low -> high distance alone never sees.
+    lbvh = BVHTree.FromObject(low, deps)
+    linv = mw.inverted()
+    hmw = high_eval_obj.matrix_world
+    hverts = high_eval_obj.data.vertices
+    step = max(1, len(hverts) // 40000)
+    loss = []
+    for i in range(0, len(hverts), step):
+        p = hmw @ hverts[i].co
+        hit = lbvh.find_nearest(linv @ p)
+        if hit and hit[0] is not None:
+            loss.append(((mw @ hit[0]) - p).length)
+    loss.sort()
     me = low.data
     quads = sum(1 for p in me.polygons if len(p.vertices) == 4)
     ngons = sum(1 for p in me.polygons if len(p.vertices) > 4)
@@ -239,6 +253,8 @@ def quality_report(low, high_eval_obj):
         "mean_dev_pct": (sum(devs) / len(devs) / diag * 100) if devs else 0.0,
         "p99_dev_pct": (devs[int(len(devs) * 0.99)] / diag * 100) if devs else 0.0,
         "max_dev_pct": (devs[-1] / diag * 100) if devs else 0.0,
+        "loss_mean_pct": (sum(loss) / len(loss) / diag * 100) if loss else 0.0,
+        "loss_p99_pct": (loss[int(len(loss) * 0.99)] / diag * 100) if loss else 0.0,
     }
 
 
@@ -315,8 +331,11 @@ def retopologize(context, s):
     s.report = (
         f"{rep['tris']:,} tris / {rep['faces']:,} faces ({rep['quads']:,} quads, {rep['ngons']} ngons); "
         f"{rep['non_manifold_edges']} non-manifold edges; "
-        f"deviation mean {rep['mean_dev_pct']:.2f}% p99 {rep['p99_dev_pct']:.2f}% max {rep['max_dev_pct']:.2f}%"
+        f"deviation mean {rep['mean_dev_pct']:.2f}% p99 {rep['p99_dev_pct']:.2f}% max {rep['max_dev_pct']:.2f}%; "
+        f"detail lost mean {rep['loss_mean_pct']:.2f}% p99 {rep['loss_p99_pct']:.2f}%"
     )
+    low["aaf_loss_p99"] = rep["loss_p99_pct"]
+    low["aaf_non_manifold"] = rep["non_manifold_edges"]
     s.status = f"Retopology: {n0:,} -> {rep['tris']:,} tris ({method_used})"
     log(s.status)
     log(s.report)
