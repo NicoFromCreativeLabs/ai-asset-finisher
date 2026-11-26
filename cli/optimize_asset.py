@@ -1,4 +1,4 @@
-"""Headless entry point used by the Creativelabs 3D app (and usable by hand):
+"""Headless entry point used by the CreativelabsStudio app (and usable by hand):
 
   blender -b --factory-startup --python cli/optimize_asset.py -- <in.glb> <out_dir> <target_tris> <max_tris> <resolution>
 
